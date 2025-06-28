@@ -69,7 +69,7 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
       }
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://your-app.vercel.app'
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hackathon-nexussync.vercel.app'
     const confirmationUrl = `${baseUrl}/confirm-email?token=${confirmationToken}`
 
     const emailData = {
