@@ -38,7 +38,7 @@
 
 ## 🎯 Project Overview
 
-**NexusSync** is a comprehensive campus club management and student engagement platform developed for **ISTE MIT Manipal** during the hackathon. The platform serves as a unified ecosystem for managing student clubs, events, recruitment, and fostering meaningful connections between students and campus organizations.
+**NexusSync** is a comprehensive campus club management and student engagement platform developed for colleges during the hackathon. The platform serves as a unified ecosystem for managing student clubs, events, recruitment, and fostering meaningful connections between students and campus organizations.
 
 ### 🎯 Mission
 To revolutionize campus club management by providing a seamless, feature-rich platform that enhances student engagement, streamlines administrative processes, and creates a vibrant campus community.
