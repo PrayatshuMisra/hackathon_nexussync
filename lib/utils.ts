@@ -19,11 +19,6 @@ export function generateUUID(): string {
 }
 
 export function getBaseUrl(): string {
-
-  if (typeof window !== 'undefined') {
-    return window.location.origin
-  }
-  
- 
+  // Always return the deployment URL
   return 'https://hackathon-nexussync.vercel.app'
 }

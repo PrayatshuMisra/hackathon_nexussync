@@ -118,7 +118,15 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
     console.log('🔗 Using base URL for confirmation:', baseUrl)
     console.log('🌐 Current window location:', typeof window !== 'undefined' ? window.location.href : 'server-side')
     console.log('📧 Confirmation URL:', `${baseUrl}/confirm-email?token=${confirmationToken}`)
-    const confirmationUrl = `${baseUrl}/confirm-email?token=${confirmationToken}`
+    console.log('🔧 Environment check:', {
+      NODE_ENV: process.env.NODE_ENV,
+      NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
+      VERCEL_URL: process.env.VERCEL_URL
+    })
+    
+    // Hardcode the deployment URL for confirmation
+    const confirmationUrl = `https://hackathon-nexussync.vercel.app/confirm-email?token=${confirmationToken}`
+    console.log('🎯 Final confirmation URL:', confirmationUrl)
 
     const emailData = {
       registrationNumber: student.registration_number,
@@ -131,7 +139,6 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
 
     if (!emailResult.success) {
       console.error('Email sending failed:', emailResult.error)
-
     }
 
     return {

@@ -74,8 +74,12 @@ export class EmailService {
       console.log('🌐 Current window location:', typeof window !== 'undefined' ? window.location.href : 'server-side')
       console.log('📧 Redirect URL:', `${baseUrl}/dashboard/student`)
 
+      // Hardcode the deployment URL for redirect
+      const redirectUrl = 'https://hackathon-nexussync.vercel.app/dashboard/student'
+      console.log('🎯 Final redirect URL:', redirectUrl)
+
       const { error } = await supabase.auth.resetPasswordForEmail(to, {
-        redirectTo: `${baseUrl}/dashboard/student`
+        redirectTo: redirectUrl
       })
       
       if (error) {
