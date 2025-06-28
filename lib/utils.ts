@@ -23,22 +23,7 @@ export function getBaseUrl(): string {
   if (typeof window !== 'undefined') {
     return window.location.origin
   }
-
-  let baseUrl = process.env.NEXT_PUBLIC_BASE_URL
   
-  if (!baseUrl) {
-    if (process.env.NODE_ENV === 'production') {
-      baseUrl = process.env.VERCEL_URL 
-        ? `https://${process.env.VERCEL_URL}`
-        : 'https://hackathon-nexussync.vercel.app'
-    } else {
-      baseUrl = 'http://localhost:3000'
-    }
-  }
-  
-  if (baseUrl && !baseUrl.startsWith('http')) {
-    baseUrl = `https://${baseUrl}`
-  }
-  
-  return baseUrl
+ 
+  return 'https://hackathon-nexussync.vercel.app'
 }

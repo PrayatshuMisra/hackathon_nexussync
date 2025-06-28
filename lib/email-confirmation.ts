@@ -116,6 +116,8 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
 
     const baseUrl = getBaseUrl()
     console.log('🔗 Using base URL for confirmation:', baseUrl)
+    console.log('🌐 Current window location:', typeof window !== 'undefined' ? window.location.href : 'server-side')
+    console.log('📧 Confirmation URL:', `${baseUrl}/confirm-email?token=${confirmationToken}`)
     const confirmationUrl = `${baseUrl}/confirm-email?token=${confirmationToken}`
 
     const emailData = {

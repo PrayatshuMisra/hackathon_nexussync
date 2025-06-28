@@ -70,6 +70,9 @@ export class EmailService {
       console.log('📄 Content length:', htmlContent.length, 'characters')
 
       const baseUrl = getBaseUrl()
+      console.log('🔗 Using base URL for email service:', baseUrl)
+      console.log('🌐 Current window location:', typeof window !== 'undefined' ? window.location.href : 'server-side')
+      console.log('📧 Redirect URL:', `${baseUrl}/dashboard/student`)
 
       const { error } = await supabase.auth.resetPasswordForEmail(to, {
         redirectTo: `${baseUrl}/dashboard/student`
