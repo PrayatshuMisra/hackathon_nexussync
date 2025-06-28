@@ -16,6 +16,7 @@ import { AnimatedBackground } from "@/components/ui/animated-background"
 import FallingLeaves from "@/components/ui/FallingLeaves"
 import { supabase } from "@/lib/supabase"
 import { sendConfirmationEmail } from "@/lib/email-confirmation"
+import { loginStudentDirectly } from "@/lib/auth"
 
 interface EnhancedLoginFormProps {
   onLogin: (role: string, user: any) => void
@@ -25,11 +26,10 @@ interface EnhancedLoginFormProps {
 export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormProps) {
   const [userRole, setUserRole] = useState<"student" | "club_member" | "admin">("student")
   const [loading, setLoading] = useState(false)
-  const [sendingEmail, setSendingEmail] = useState(false)
+  const [processingLogin, setProcessingLogin] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [emailSent, setEmailSent] = useState(false)
-  const [systemStatus, setSystemStatus] = useState<{ status: string; message: string } | null>(null)
   const [formData, setFormData] = useState({
     registrationNumber: "",
     email: "",
@@ -37,70 +37,6 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
     adminId: "",
   })
   const { toast } = useToast()
-
-  const checkSystemStatus = async () => {
-    try {
-      setSystemStatus({ status: 'loading', message: 'Checking system status...' })
-
-      const response = await fetch('/api/health')
-      const healthData = await response.json()
-      
-      if (healthData.status === 'healthy') {
-        setSystemStatus({
-          status: 'success',
-          message: 'System is working correctly. You should be able to sign in.'
-        })
-        return
-      }
-      
-      if (healthData.status === 'unhealthy') {
-        if (!healthData.environment.hasSupabaseUrl || !healthData.environment.hasSupabaseKey) {
-          setSystemStatus({
-            status: 'error',
-            message: 'Database configuration is missing. Please contact support.'
-          })
-          return
-        }
-        
-        if (healthData.database.status === 'error') {
-          setSystemStatus({
-            status: 'error',
-            message: `Database connection failed: ${healthData.database.error}`
-          })
-          return
-        }
-      }
-      
-      if (healthData.status === 'degraded') {
-        const missingTables = []
-        if (healthData.tables.users === 'missing') missingTables.push('users')
-        if (healthData.tables.confirmation_tokens === 'missing') missingTables.push('confirmation_tokens')
-        if (healthData.tables.user_sessions === 'missing') missingTables.push('user_sessions')
-        
-        setSystemStatus({
-          status: 'error',
-          message: `Database tables missing: ${missingTables.join(', ')}. Please contact support.`
-        })
-        return
-      }
-      
-      setSystemStatus({
-        status: 'error',
-        message: 'System check failed. Please try again or contact support.'
-      })
-      
-    } catch (error) {
-      console.error('❌ System status check failed:', error)
-      setSystemStatus({
-        status: 'error',
-        message: 'Unable to check system status. Please check your internet connection.'
-      })
-    }
-  }
-
-  const handleDiagnosticClick = async () => {
-    await checkSystemStatus()
-  }
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -116,14 +52,35 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
       return
     }
 
-    if (formData.registrationNumber) {
-      setSendingEmail(true)
-      setError("")
+    setProcessingLogin(true)
+    setError("")
 
-      try {
-        console.log('🔄 Attempting to send confirmation email for registration number:', formData.registrationNumber)
+    try {
+      const identifier = formData.registrationNumber || formData.email!
+      
+
+      const directLoginResult = await loginStudentDirectly(identifier)
+      
+      if (directLoginResult.success && directLoginResult.user) {
+        // Student exists and can login directly        localStorage.setItem("user-data", JSON.stringify(directLoginResult.user))
         
-        const result = await sendConfirmationEmail(formData.registrationNumber)
+        onLogin(directLoginResult.user.role, {
+          ...directLoginResult.user,
+          fullName: directLoginResult.user.fullName,
+          email: directLoginResult.user.email,
+          profileImageUrl: directLoginResult.user.profileImageUrl
+        })
+        
+        toast({
+          title: "Login Successful!",
+          description: `Welcome back, ${directLoginResult.user.fullName}!`,
+        })
+        
+        return
+      }
+      
+      if (directLoginResult.requiresConfirmation) {
+        const result = await sendConfirmationEmail(identifier)
 
         if (result.success) {
           setEmailSent(true)
@@ -132,83 +89,33 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
             description: `Confirmation email has been sent to ${result.email}`,
           })
         } else {
-          const errorMessage = result.error || 'Failed to send confirmation email'
-          console.error('❌ Email confirmation failed:', errorMessage)
-          setError(errorMessage)
+          setError(result.error || 'Failed to send confirmation email')
           toast({
             title: "Email Failed",
-            description: errorMessage,
+            description: result.error || 'Failed to send confirmation email',
             variant: "destructive",
           })
         }
-      } catch (error) {
-        console.error('❌ Unexpected error in handleStudentLogin:', error)
-        const errorMessage = error instanceof Error 
-          ? error.message 
-          : "Failed to send confirmation email. Please try again."
-        setError(errorMessage)
-        toast({
-          title: "Error",
-          description: errorMessage,
-          variant: "destructive",
-        })
-      } finally {
-        setSendingEmail(false)
+        return
       }
-      return
-    }
 
-    if (formData.email) {
-      setSendingEmail(true)
-      setError("")
-
-      try {
-
-        const { data: userData, error } = await supabase
-          .from("users")
-          .select("*")
-          .eq("email", formData.email)
-          .eq("role", "student")
-          .single()
-
-        if (userData && !error) {
-
-          const result = await sendConfirmationEmail(formData.email)
-
-          if (result.success) {
-            setEmailSent(true)
-            toast({
-              title: "Email Sent!",
-              description: `Confirmation email has been sent to ${result.email}`,
-            })
-          } else {
-            setError(result.error || 'Failed to send confirmation email')
-            toast({
-              title: "Email Failed",
-              description: result.error || 'Failed to send confirmation email',
-              variant: "destructive",
-            })
-          }
-        } else {
-          setError("Student not found with this email address.")
-          toast({
-            title: "Login Failed",
-            description: "Student not found with this email address.",
-            variant: "destructive",
-          })
-        }
-      } catch (error) {
-        const errorMessage = "Failed to send confirmation email. Please try again."
-        setError(errorMessage)
-        toast({
-          title: "Error",
-          description: errorMessage,
-          variant: "destructive",
-        })
-      } finally {
-        setSendingEmail(false)
-      }
-      return
+      setError(directLoginResult.error || 'Student not found')
+      toast({
+        title: "Login Failed",
+        description: directLoginResult.error || 'Student not found',
+        variant: "destructive",
+      })
+      
+    } catch (error) {
+      const errorMessage = "Failed to process login. Please try again."
+      setError(errorMessage)
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setProcessingLogin(false)
     }
   }
 
@@ -359,40 +266,7 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
           {error && (
             <Alert variant="destructive" className="mb-6 animate-fade-in-up bg-gradient-to-r from-pink-100 via-red-100 to-pink-50 dark:from-red-900 dark:via-pink-900 dark:to-red-800 border-l-8 border-red-500 shadow-xl rounded-xl flex items-center gap-4 p-4">
               <AlertCircle className="h-7 w-7 text-red-500" />
-              <div className="flex-1">
-                <AlertDescription className="font-semibold text-red-900 dark:text-red-100 text-base">{error}</AlertDescription>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleDiagnosticClick}
-                  className="mt-2 text-xs border-red-300 text-red-700 hover:bg-red-50"
-                >
-                  🔧 Run Diagnostic
-                </Button>
-              </div>
-            </Alert>
-          )}
-
-          {systemStatus && (
-            <Alert className={`mb-6 animate-fade-in-up border-l-8 shadow-xl rounded-xl flex items-center gap-4 p-4 ${
-              systemStatus.status === 'error' 
-                ? 'bg-gradient-to-r from-red-100 via-pink-100 to-red-50 dark:from-red-900 dark:via-pink-900 dark:to-red-800 border-red-500' 
-                : systemStatus.status === 'success'
-                ? 'bg-gradient-to-r from-green-100 via-emerald-100 to-green-50 dark:from-green-900 dark:via-emerald-900 dark:to-green-800 border-green-500'
-                : 'bg-gradient-to-r from-blue-100 via-indigo-100 to-blue-50 dark:from-blue-900 dark:via-indigo-900 dark:to-blue-800 border-blue-500'
-            }`}>
-              {systemStatus.status === 'loading' && <Loader2 className="h-7 w-7 text-blue-500 animate-spin" />}
-              {systemStatus.status === 'error' && <AlertCircle className="h-7 w-7 text-red-500" />}
-              {systemStatus.status === 'success' && <Mail className="h-7 w-7 text-green-500" />}
-              <AlertDescription className={`font-semibold text-base ${
-                systemStatus.status === 'error' 
-                  ? 'text-red-900 dark:text-red-100' 
-                  : systemStatus.status === 'success'
-                  ? 'text-green-900 dark:text-green-100'
-                  : 'text-blue-900 dark:text-blue-100'
-              }`}>
-                {systemStatus.message}
-              </AlertDescription>
+              <AlertDescription className="font-semibold text-red-900 dark:text-red-100 text-base">{error}</AlertDescription>
             </Alert>
           )}
 
@@ -400,7 +274,7 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
             <Alert className="mb-6 animate-fade-in-up bg-gradient-to-r from-green-100 via-emerald-100 to-green-50 dark:from-green-900 dark:via-emerald-900 dark:to-green-800 border-l-8 border-green-500 shadow-xl rounded-xl flex items-center gap-4 p-4">
               <Mail className="h-7 w-7 text-green-500" />
               <AlertDescription className="font-semibold text-green-900 dark:text-green-100 text-base">
-                Confirmation email sent! Please check your inbox and click the link to access your dashboard.
+                Confirmation email sent! Please check your inbox and click the link to complete your registration and access your dashboard.
               </AlertDescription>
             </Alert>
           )}
@@ -436,7 +310,7 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
                   />
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Enter your registration number to receive a confirmation email
+                  Enter your registration number to login directly or receive a confirmation email
                 </p>
               </div>
               <div className="flex items-center space-x-2">
@@ -459,24 +333,21 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
                   />
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                Enter your registered email-id to receive a confirmation email
+                Enter your registered email to login directly or receive a confirmation email
                 </p>
               </div>
               <Button
                 className="w-full h-12 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 animate-fade-in-up"
                 onClick={handleLogin}
-                disabled={loading || sendingEmail}
+                disabled={loading || processingLogin}
               >
-                {loading || sendingEmail ? (
+                {loading || processingLogin ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {sendingEmail ? "Sending Email..." : "Signing In..."}
+                    {processingLogin ? "Processing..." : "Signing In..."}
                   </>
                 ) : (
-                  <>
-                    <User className="w-4 h-4 mr-2" />
-                    {(formData.registrationNumber || formData.email) ? "Send Confirmation Email" : "Login as Student"}
-                  </>
+                  "Sign In"
                 )}
               </Button>
             </TabsContent>

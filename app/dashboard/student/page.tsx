@@ -14,35 +14,24 @@ export default function StudentDashboardPage() {
   const { theme, setTheme } = useTheme()
 
   useEffect(() => {
-    console.log('🔍 Checking authentication for student dashboard...')
-    
+
     const userData = localStorage.getItem('user-data')
     const sessionToken = localStorage.getItem('session-token')
 
-    console.log('📦 User data exists:', !!userData)
-    console.log('🔑 Session token exists:', !!sessionToken)
-
-    // Check if we have user data (either from Supabase Auth or custom token)
-    if (!userData) {
-      console.log('❌ No user data found, redirecting to home')
+    if (!userData || !sessionToken) {
       router.push('/')
       return
     }
 
     try {
       const user = JSON.parse(userData)
-      console.log('👤 User role:', user.role)
-      
       if (user.role !== 'student') {
-        console.log('❌ User is not a student, redirecting to home')
         router.push('/')
         return
       }
-      
-      console.log('✅ User authenticated successfully:', user.fullName || user.full_name)
       setUser(user)
     } catch (error) {
-      console.error('❌ Error parsing user data:', error)
+      console.error('Error parsing user data:', error)
       router.push('/')
       return
     } finally {

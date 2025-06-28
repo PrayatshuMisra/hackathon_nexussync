@@ -23,40 +23,21 @@ export default function ConfirmEmailPage() {
   const [userData, setUserData] = useState<any>(null)
 
   useEffect(() => {
-    console.log('🔄 Email confirmation page loaded')
-    console.log('🔗 Token:', token)
-    console.log('📧 Type:', type)
-    
+ 
     if (type === 'signup' || type === 'recovery') {
-      console.log('🔄 Handling Supabase Auth confirmation...')
       handleSupabaseAuthConfirmation()
     } else if (token) {
-      console.log('🔄 Handling custom token confirmation...')
+
       verifyConfirmation()
     } else {
-      console.log('❌ No confirmation token provided')
       setStatus('error')
       setMessage('No confirmation token provided')
     }
   }, [token, type])
 
-  // Add a fallback redirect mechanism
-  useEffect(() => {
-    if (status === 'success' && userData) {
-      const redirectTimer = setTimeout(() => {
-        console.log('🚀 Fallback redirect to dashboard...')
-        router.push('/dashboard/student')
-      }, 3000) // 3 seconds fallback
-
-      return () => clearTimeout(redirectTimer)
-    }
-  }, [status, userData, router])
-
   const handleSupabaseAuthConfirmation = async () => {
     try {
-      console.log('🔄 Handling Supabase Auth confirmation...')
-      
-      // Get the current session after the auth redirect
+
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       
       if (sessionError) {
@@ -66,12 +47,8 @@ export default function ConfirmEmailPage() {
         return
       }
 
-      console.log('📧 Session data:', session)
-
       if (session?.user) {
-        console.log('✅ User authenticated:', session.user.email)
-        
-        // Try to get user data from the database
+ 
         const { data: user, error: userError } = await supabase
           .from('users')
           .select('*')
@@ -79,7 +56,6 @@ export default function ConfirmEmailPage() {
           .single()
 
         if (user && !userError) {
-          console.log('✅ User found in database:', user)
           setStatus('success')
           setMessage('Email confirmed successfully! Redirecting to dashboard...')
           setUserData({
@@ -93,36 +69,28 @@ export default function ConfirmEmailPage() {
             profileImageUrl: user.profile_image_url
           })
           
-          // Store user data in localStorage
+ 
           localStorage.setItem('user-data', JSON.stringify(user))
-          localStorage.setItem('session-token', session.access_token)
           
+ 
           toast({
             title: "Email Confirmed!",
             description: "Welcome to NexusSync! Redirecting to your dashboard...",
           })
 
-          // Redirect to dashboard immediately
+      
           setTimeout(() => {
             router.push('/dashboard/student')
           }, 2000)
         } else {
-          console.error('❌ User not found in database:', userError)
           setStatus('error')
-          setMessage('User profile not found. Please contact support.')
+          setMessage('User profile not found')
         }
       } else {
-        console.log('❌ No session found, trying custom token verification...')
-        // If no Supabase session, try our custom token verification
-        if (token) {
-          await verifyConfirmation()
-        } else {
-          setStatus('error')
-          setMessage('Email confirmation failed. Please try again.')
-        }
+        setStatus('error')
+        setMessage('Email confirmation failed. Please try again.')
       }
     } catch (error) {
-      console.error('❌ Error in handleSupabaseAuthConfirmation:', error)
       setStatus('error')
       setMessage('An error occurred while confirming your email')
       
@@ -136,34 +104,30 @@ export default function ConfirmEmailPage() {
 
   const verifyConfirmation = async () => {
     try {
-      console.log('🔄 Verifying custom confirmation token:', token)
-      
       const result = await verifyConfirmationToken(token!)
 
       if (result.success && result.user) {
-        console.log('✅ Custom token verification successful:', result.user)
         setStatus('success')
         setMessage('Email confirmed successfully! Redirecting to dashboard...')
         setUserData(result.user)
         
-        // Store user data in localStorage
+   
         localStorage.setItem('user-data', JSON.stringify(result.user))
         if (result.sessionToken) {
           localStorage.setItem('session-token', result.sessionToken)
         }
         
+ 
         toast({
           title: "Email Confirmed!",
           description: "Welcome to NexusSync! Redirecting to your dashboard...",
         })
 
-        // Redirect to dashboard immediately
+   
         setTimeout(() => {
-          console.log('🚀 Redirecting to dashboard...')
           router.push('/dashboard/student')
         }, 2000)
       } else {
-        console.error('❌ Custom token verification failed:', result.error)
         setStatus('error')
         setMessage(result.error || 'Failed to confirm email')
         
@@ -174,7 +138,6 @@ export default function ConfirmEmailPage() {
         })
       }
     } catch (error) {
-      console.error('❌ Error in verifyConfirmation:', error)
       setStatus('error')
       setMessage('An error occurred while confirming your email')
       
@@ -249,15 +212,6 @@ export default function ConfirmEmailPage() {
                   Welcome back, {userData.fullName}! You'll be redirected to your dashboard shortly.
                 </AlertDescription>
               </Alert>
-            )}
-
-            {status === 'success' && userData && (
-              <Button 
-                onClick={() => router.push('/dashboard/student')}
-                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-semibold rounded-xl"
-              >
-                🚀 Go to Dashboard Now
-              </Button>
             )}
 
             {status === 'error' && (

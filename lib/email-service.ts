@@ -70,7 +70,7 @@ export class EmailService {
       console.log('📄 Content length:', htmlContent.length, 'characters')
 
       const { error } = await supabase.auth.resetPasswordForEmail(to, {
-        redirectTo: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://hackathon-nexussync.vercel.app'}/dashboard/student`
+        redirectTo: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://your-app.vercel.app'}/dashboard/student`
       })
       
       if (error) {
