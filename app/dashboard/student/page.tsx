@@ -94,8 +94,6 @@ export default function StudentDashboardPage() {
       />
       <StudentDashboard 
         user={user} 
-        currentView={currentView}
-        onNavigation={handleNavigation}
       />
     </div>
   )

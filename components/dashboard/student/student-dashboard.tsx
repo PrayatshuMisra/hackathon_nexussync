@@ -146,13 +146,8 @@ function JoinClubButton({ clubId, clubName }: { clubId: number, clubName: string
   )
 }
 
-interface StudentDashboardProps {
-  user: any
-  currentView?: string
-  onNavigation?: (view: string) => void
-}
-
-export function StudentDashboard({ user, currentView = "dashboard", onNavigation }: StudentDashboardProps) {
+export function StudentDashboard({ user }: { user: any }) {
+  const [currentView, setCurrentView] = useState("dashboard");
   const [clubs, setClubs] = useState<Club[]>([])
   const [loadingClubs, setLoadingClubs] = useState(false)
   const { toast } = useToast();
@@ -167,6 +162,7 @@ export function StudentDashboard({ user, currentView = "dashboard", onNavigation
   const [history, setHistory] = useState<any[]>([])
   const [eventSearch, setEventSearch] = useState("");
   const [eventCategory, setEventCategory] = useState("All");
+  const [isDataLoaded, setIsDataLoaded] = useState(false)
   const eventCategories = ["All", "Technical", "Cultural", "Service", "Workshops"];
 
   const allTags = Array.from(new Set(clubs.flatMap(club => club.tags || [])));
@@ -183,16 +179,14 @@ export function StudentDashboard({ user, currentView = "dashboard", onNavigation
   const joinedClubIds = clubsJoined.map((c: any) => c.id)
 
   const handleNavigation = (view: string) => {
-    if (onNavigation) {
-      onNavigation(view)
-    }
+    setCurrentView(view);
   }
 
   const handleBackToDashboard = () => {
-    handleNavigation("dashboard")
+    setCurrentView("dashboard");
   }
 
-  const handleProfileClick = () => handleNavigation("profile")
+  const handleProfileClick = () => setCurrentView("profile");
 
   useEffect(() => {
     if (currentView === "clubs") {
@@ -205,61 +199,128 @@ export function StudentDashboard({ user, currentView = "dashboard", onNavigation
   }, [currentView])
 
   useEffect(() => {
-
     const fetchProfile = async () => {
+      console.log('🔍 Starting fetchProfile...')
       let userId = null
+      let clubMembers: any[] = []
+      
       if (typeof window !== 'undefined') {
         const userData = localStorage.getItem('user-data')
+        console.log('📦 User data from localStorage:', userData)
         if (userData) {
           try {
             const parsed = JSON.parse(userData)
             userId = parsed.id
-            setUserName(parsed.fullName || parsed.full_name || null)
-          } catch {}
+            console.log('🆔 User ID extracted:', userId)
+            setUserName(parsed.fullName || parsed.full_name || 'Student')
+            // Set user profile from localStorage data as fallback
+            setUserProfile(parsed)
+          } catch (error) {
+            console.error('❌ Error parsing user data:', error)
+            // Set default user data to prevent infinite loading
+            setUserName('Student')
+            setUserProfile({ id: 1, fullName: 'Student', role: 'student' })
+            setIsDataLoaded(true)
+            return
+          }
+        } else {
+          // Set default user data if no localStorage data
+          setUserName('Student')
+          setUserProfile({ id: 1, fullName: 'Student', role: 'student' })
+          setIsDataLoaded(true)
+          return
         }
       }
-      if (!userId) return
+      
+      if (!userId) {
+        console.error('❌ No user ID found, using default')
+        setUserName('Student')
+        setUserProfile({ id: 1, fullName: 'Student', role: 'student' })
+        setIsDataLoaded(true)
+        return
+      }
 
-      const profile = await usersAPI.getProfile(userId)
-      setUserProfile(profile)
- 
-      const { data: achData } = await supabase
-        .from("achievements")
-        .select("*")
-        .eq("user_id", userId)
-      setAchievements(achData || [])
+      try {
+        console.log('🔄 Fetching profile from database...')
+        // Try to fetch updated profile from database
+        const profile = await usersAPI.getProfile(userId)
+        console.log('✅ Profile fetched:', profile)
+        setUserProfile(profile)
+      } catch (error) {
+        console.error('❌ Error fetching profile:', error)
+        // Keep the localStorage data if database fetch fails
+      }
 
-      const { data: clubMembers } = await supabase
-        .from("club_members")
-        .select("club:clubs(*), joined_at")
-        .eq("user_id", userId)
-      setClubsJoined((clubMembers || []).map((cm: any) => cm.club))
+      try {
+        console.log('🔄 Fetching achievements...')
+        const { data: achData } = await supabase
+          .from("achievements")
+          .select("*")
+          .eq("user_id", userId)
+        console.log('✅ Achievements fetched:', achData)
+        setAchievements(achData || [])
+      } catch (error) {
+        console.error('❌ Error fetching achievements:', error)
+        setAchievements([])
+      }
 
-      const { data: regData } = await supabase
-        .from("registrations")
-        .select("event:events(title,start_date), registration_date")
-        .eq("user_id", userId)
+      try {
+        console.log('🔄 Fetching club memberships...')
+        const { data: clubMembersData } = await supabase
+          .from("club_members")
+          .select("club:clubs(*), joined_at")
+          .eq("user_id", userId)
+        clubMembers = clubMembersData || []
+        console.log('✅ Club memberships fetched:', clubMembers)
+        setClubsJoined(clubMembers.map((cm: any) => cm.club))
+      } catch (error) {
+        console.error('❌ Error fetching club memberships:', error)
+        setClubsJoined([])
+      }
 
-      const eventHistory = (regData || []).map((r: any) => ({
-        type: 'event',
-        action: `Registered for ${r.event?.title}`,
-        date: r.registration_date || r.event?.start_date,
-      }))
-      const clubHistory = (clubMembers || []).map((cm: any) => ({
-        type: 'club',
-        action: `Joined ${cm.club?.name}`,
-        date: cm.joined_at,
-      }))
-  
-      const combinedHistory = [...eventHistory, ...clubHistory].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
-      setHistory(combinedHistory)
+      try {
+        console.log('🔄 Fetching event history...')
+        const { data: regData } = await supabase
+          .from("registrations")
+          .select("event:events(title,start_date), registration_date")
+          .eq("user_id", userId)
+
+        const eventHistory = (regData || []).map((r: any) => ({
+          type: 'event',
+          action: `Registered for ${r.event?.title}`,
+          date: r.registration_date || r.event?.start_date,
+        }))
+        const clubHistory = clubMembers.map((cm: any) => ({
+          type: 'club',
+          action: `Joined ${cm.club?.name}`,
+          date: cm.joined_at,
+        }))
+    
+        const combinedHistory = [...eventHistory, ...clubHistory].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+        console.log('✅ History fetched:', combinedHistory)
+        setHistory(combinedHistory)
+      } catch (error) {
+        console.error('❌ Error fetching history:', error)
+        setHistory([])
+      }
+      
+      console.log('✅ fetchProfile completed')
+      setIsDataLoaded(true)
     }
+    
+    // Set a timeout to ensure dashboard loads even if data fetching takes too long
+    const timeoutId = setTimeout(() => {
+      console.log('⏰ Data loading timeout, showing dashboard anyway')
+      setIsDataLoaded(true)
+    }, 5000) // 5 second timeout
+    
     fetchProfile()
+    
+    return () => clearTimeout(timeoutId)
   }, [])
 
   return (() => {
     if (currentView === "profile") {
-   
       const user = userProfile || {}
       return (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50/40 via-blue-50/40 to-purple-50/40 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 p-8">
@@ -572,139 +633,149 @@ export function StudentDashboard({ user, currentView = "dashboard", onNavigation
         </div>
       )
     }
- 
+
     return (
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 min-h-screen overflow-x-hidden">
         {/* Animated Particles & Glitters Background */}
         <ParticleGlitterBackground />
         <div className="relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 min-h-screen">
-            {/* Left Sidebar - Profile & Quick Actions */}
-            <div className="lg:col-span-1 animate-slide-left space-y-8">
-              <ProfileSidebar onNavigate={handleNavigation} />
-              <RecommendedClubs />
+          {!isDataLoaded ? (
+            <div className="flex items-center justify-center min-h-[60vh]">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+                <p className="text-emerald-800 dark:text-emerald-200 text-lg">Loading your dashboard...</p>
+                <p className="text-gray-600 dark:text-gray-400 text-sm mt-2">This may take a few moments</p>
+              </div>
             </div>
-            {/* Main Content */}
-            <div className="lg:col-span-2 flex flex-col min-h-screen" style={{height: '100%'}}>
-              {/* Welcome Banner */}
-              <Card className="student-welcome-banner border-0 shadow-2xl text-white overflow-hidden relative animate-slide-up rounded-3xl backdrop-blur-xl bg-white/30 dark:bg-gray-900/40 transition-transform duration-300 hover:scale-105 hover:-rotate-x-2 hover:rotate-y-2">
-                {/* Animated SVG background */}
-                <div className="absolute inset-0 z-0 pointer-events-none">
-                  <svg width="100%" height="100%" viewBox="0 0 800 200" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full animate-pulse">
-                    <defs>
-                      <linearGradient id="waveGradient" x1="0" y1="0" x2="800" y2="0" gradientUnits="userSpaceOnUse">
-                        <stop stopColor="#34d399" />
-                        <stop offset="1" stopColor="#60a5fa" />
-                      </linearGradient>
-                    </defs>
-                    <path d="M0 120 Q 200 180 400 120 T 800 120 V200 H0Z" fill="url(#waveGradient)" opacity="0.3" />
-                    <circle cx="700" cy="60" r="40" fill="#a5b4fc" opacity="0.18">
-                      <animate attributeName="cy" values="60;90;60" dur="4s" repeatCount="indefinite" />
-                    </circle>
-                    <circle cx="120" cy="40" r="30" fill="#6ee7b7" opacity="0.18">
-                      <animate attributeName="cy" values="40;70;40" dur="5s" repeatCount="indefinite" />
-                    </circle>
-                  </svg>
-                </div>
-                <CardContent className="p-8 relative z-10">
-                  <h2 className="flex items-center mb-4 text-3xl font-bold">
-                    <Sparkles className="w-8 h-8 mr-3 text-yellow-300 animate-pulse" />
-                    {userName ? `Welcome back, ${userName}! 👋` : 'Welcome back, Student! 👋'}
-                  </h2>
-                  <p className="opacity-90 mb-2 text-lg leading-relaxed font-medium">
-                  Discover amazing clubs and events happening around MIT Manipal campus. Your journey to connect, learn,
-                  and grow starts here!
-                  </p>
-                  <p className="text-emerald-200 dark:text-emerald-300 italic mb-6 text-base font-semibold">
-                    "Success is the sum of small efforts, repeated day in and day out."
-                  </p>
-                  <div className="flex flex-wrap items-center gap-4">
-                    <Button
-                      variant="secondary"
-                      size="lg"
-                      className="bg-white/20 backdrop-blur-sm border-white/30 text-white hover:bg-white/30 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
-                      onClick={() => handleNavigation("clubs")}
-                    >
-                      <Plus className="w-5 h-5 mr-2" />
-                      Join New Club
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      className="border-white/30 text-white hover:bg-white/20 backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
-                      onClick={() => handleNavigation("events")}
-                    >
-                      <Calendar className="w-5 h-5 mr-2" />
-                      Browse Events
-                    </Button>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 min-h-screen">
+              {/* Left Sidebar - Profile & Quick Actions */}
+              <div className="lg:col-span-1 animate-slide-left space-y-8">
+                <ProfileSidebar onNavigate={handleNavigation} />
+                <RecommendedClubs />
+              </div>
+              {/* Main Content */}
+              <div className="lg:col-span-2 flex flex-col min-h-screen" style={{height: '100%'}}>
+                {/* Welcome Banner */}
+                <Card className="student-welcome-banner border-0 shadow-2xl text-white overflow-hidden relative animate-slide-up rounded-3xl backdrop-blur-xl bg-white/30 dark:bg-gray-900/40 transition-transform duration-300 hover:scale-105 hover:-rotate-x-2 hover:rotate-y-2">
+                  {/* Animated SVG background */}
+                  <div className="absolute inset-0 z-0 pointer-events-none">
+                    <svg width="100%" height="100%" viewBox="0 0 800 200" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full animate-pulse">
+                      <defs>
+                        <linearGradient id="waveGradient" x1="0" y1="0" x2="800" y2="0" gradientUnits="userSpaceOnUse">
+                          <stop stopColor="#34d399" />
+                          <stop offset="1" stopColor="#60a5fa" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M0 120 Q 200 180 400 120 T 800 120 V200 H0Z" fill="url(#waveGradient)" opacity="0.3" />
+                      <circle cx="700" cy="60" r="40" fill="#a5b4fc" opacity="0.18">
+                        <animate attributeName="cy" values="60;90;60" dur="4s" repeatCount="indefinite" />
+                      </circle>
+                      <circle cx="120" cy="40" r="30" fill="#6ee7b7" opacity="0.18">
+                        <animate attributeName="cy" values="40;70;40" dur="5s" repeatCount="indefinite" />
+                      </circle>
+                    </svg>
                   </div>
-                </CardContent>
-              </Card>
+                  <CardContent className="p-8 relative z-10">
+                    <h2 className="flex items-center mb-4 text-3xl font-bold">
+                      <Sparkles className="w-8 h-8 mr-3 text-yellow-300 animate-pulse" />
+                      {userName ? `Welcome back, ${userName}! 👋` : 'Welcome back, Student! 👋'}
+                    </h2>
+                    <p className="opacity-90 mb-2 text-lg leading-relaxed font-medium">
+                    Discover amazing clubs and events happening around MIT Manipal campus. Your journey to connect, learn,
+                    and grow starts here!
+                    </p>
+                    <p className="text-emerald-200 dark:text-emerald-300 italic mb-6 text-base font-semibold">
+                      "Success is the sum of small efforts, repeated day in and day out."
+                    </p>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <Button
+                        variant="secondary"
+                        size="lg"
+                        className="bg-white/20 backdrop-blur-sm border-white/30 text-white hover:bg-white/30 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+                        onClick={() => handleNavigation("clubs")}
+                      >
+                        <Plus className="w-5 h-5 mr-2" />
+                        Join New Club
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        className="border-white/30 text-white hover:bg-white/20 backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+                        onClick={() => handleNavigation("events")}
+                      >
+                        <Calendar className="w-5 h-5 mr-2" />
+                        Browse Events
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
 
-              {/* --- NEW: History section in main content --- */}
-              <div className="space-y-8 animate-fade-in">
-                {/* Achievements */}
-                <div className="space-y-4 animate-fade-in">
-                  <h2 className="text-2xl font-bold mb-4">Achievements</h2>
-                  {achievements.length === 0 ? <div className="text-gray-400">No achievements yet.</div> : achievements.map((a, i) => (
-                    <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-yellow-50 to-emerald-50 dark:from-yellow-900/20 dark:to-emerald-900/20 shadow">
-                      <Trophy className='w-6 h-6 text-yellow-400' />
-                      <div>
-                        <div className="font-semibold">{a.title}</div>
-                        <div className="text-xs text-gray-500">{a.description}</div>
+                {/* --- NEW: History section in main content --- */}
+                <div className="space-y-8 animate-fade-in">
+                  {/* Achievements */}
+                  <div className="space-y-4 animate-fade-in">
+                    <h2 className="text-2xl font-bold mb-4">Achievements</h2>
+                    {achievements.length === 0 ? <div className="text-gray-400">No achievements yet.</div> : achievements.map((a, i) => (
+                      <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-yellow-50 to-emerald-50 dark:from-yellow-900/20 dark:to-emerald-900/20 shadow">
+                        <Trophy className='w-6 h-6 text-yellow-400' />
+                        <div>
+                          <div className="font-semibold">{a.title}</div>
+                          <div className="text-xs text-gray-500">{a.description}</div>
+                        </div>
+                        <div className="ml-auto font-bold text-yellow-500">+{a.points} pts</div>
                       </div>
-                      <div className="ml-auto font-bold text-yellow-500">+{a.points} pts</div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                  {/* Clubs Joined */}
+                  <div className="space-y-3 animate-fade-in">
+                    <h2 className="text-2xl font-bold mb-4">Clubs Joined</h2>
+                    {clubsJoined.length === 0 ? <div className="text-gray-400">No clubs joined yet.</div> : clubsJoined.map((c, i) => (
+                      <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 shadow">
+                        <Users className="w-6 h-6 text-blue-500" />
+                        <div>
+                          <div className="font-semibold">{c.name}</div>
+                          <div className="text-xs text-gray-500">Member</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* History */}
+                  <div className="space-y-3 animate-fade-in">
+                    <h2 className="text-2xl font-bold mb-4">History</h2>
+                    {history.length === 0 ? <div className="text-gray-400">No history yet.</div> : history.map((h, i) => (
+                      <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-r from-gray-50 to-blue-50 dark:from-gray-900/20 dark:to-blue-900/20">
+                        <Clock className="w-4 h-4 text-emerald-500" />
+                        <div>
+                          <div className="font-medium">{h.action}</div>
+                          <div className="text-xs text-gray-500">{h.date ? new Date(h.date).toLocaleDateString() : ''}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                {/* Clubs Joined */}
-                <div className="space-y-3 animate-fade-in">
-                  <h2 className="text-2xl font-bold mb-4">Clubs Joined</h2>
-                  {clubsJoined.length === 0 ? <div className="text-gray-400">No clubs joined yet.</div> : clubsJoined.map((c, i) => (
-                    <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 shadow">
-                      <Users className="w-6 h-6 text-blue-500" />
-                      <div>
-                        <div className="font-semibold">{c.name}</div>
-                        <div className="text-xs text-gray-500">Member</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {/* History */}
-                <div className="space-y-3 animate-fade-in">
-                  <h2 className="text-2xl font-bold mb-4">History</h2>
-                  {history.length === 0 ? <div className="text-gray-400">No history yet.</div> : history.map((h, i) => (
-                    <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-r from-gray-50 to-blue-50 dark:from-gray-900/20 dark:to-blue-900/20">
-                      <Clock className="w-4 h-4 text-emerald-500" />
-                      <div>
-                        <div className="font-medium">{h.action}</div>
-                        <div className="text-xs text-gray-500">{h.date ? new Date(h.date).toLocaleDateString() : ''}</div>
-                      </div>
-                    </div>
-                  ))}
+
+                {/* Club Feed below the main sections, fill remaining vertical space */}
+                <div className="animate-slide-up animate-stagger-2 mt-8 flex-1 flex flex-col min-h-0">
+                  <div className="flex-1 flex flex-col min-h-0">
+                    <ClubFeed />
+                  </div>
                 </div>
               </div>
-
-              {/* Club Feed below the main sections, fill remaining vertical space */}
-              <div className="animate-slide-up animate-stagger-2 mt-8 flex-1 flex flex-col min-h-0">
-                <div className="flex-1 flex flex-col min-h-0">
-                  <ClubFeed />
+              {/* Right Sidebar */}
+              <div className="lg:col-span-1 space-y-8 animate-slide-right">
+                <div className="animate-stagger-1">
+                  <UpcomingEvents />
+                </div>
+                <div className="animate-stagger-2">
+                  <ApplicationStatus />
+                </div>
+                <div className="animate-stagger-3">
+                  <ClubLeaderboard topN={3} />
                 </div>
               </div>
             </div>
-            {/* Right Sidebar */}
-            <div className="lg:col-span-1 space-y-8 animate-slide-right">
-              <div className="animate-stagger-1">
-                <UpcomingEvents />
-              </div>
-              <div className="animate-stagger-2">
-                <ApplicationStatus />
-              </div>
-              <div className="animate-stagger-3">
-                <ClubLeaderboard topN={3} />
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     )

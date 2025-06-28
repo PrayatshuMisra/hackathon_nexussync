@@ -23,9 +23,22 @@ export interface VerificationResponse {
   error?: string
 }
 
+// Helper function to get the correct base URL
+function getBaseUrl(): string {
+  // Check if we're in the browser
+  if (typeof window !== 'undefined') {
+    return window.location.origin
+  }
+  
+  // Server-side: use environment variable or default
+  return process.env.NEXT_PUBLIC_BASE_URL || 
+         process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
+         'http://localhost:3000'
+}
+
 export async function sendConfirmationEmail(identifier: string): Promise<ConfirmationResponse> {
   try {
-
+    console.log('🔍 sendConfirmationEmail called with identifier:', identifier)
     const isEmail = identifier.includes('@')
     
     let query = supabase
@@ -42,50 +55,49 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
     const { data: student, error: studentError } = await query.single()
 
     if (studentError || !student) {
+      console.log('❌ Student not found:', studentError)
       return {
         success: false,
         error: isEmail ? 'Student not found with this email address' : 'Student not found with this registration number'
       }
     }
 
-    const confirmationToken = randomUUID()
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    console.log('✅ Student found:', student)
 
-    const { error: tokenError } = await supabase
-      .from('confirmation_tokens')
-      .insert({
-        token: confirmationToken,
-        user_id: student.id,
-        email: student.email,
-        expires_at: expiresAt.toISOString(),
-        used: false
+    // For Supabase Auth email confirmation, we don't need custom tokens
+    // Supabase will handle the email confirmation automatically
+    // We just need to ensure the user exists in our database
+    
+    // Update user status to indicate email confirmation is pending
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ 
+        status: 'pending_confirmation',
+        updated_at: new Date().toISOString()
       })
+      .eq('id', student.id)
 
-    if (tokenError) {
-      console.error('Error storing confirmation token:', tokenError)
+    if (updateError) {
+      console.error('Error updating user status:', updateError)
+    }
+
+    // Trigger Supabase Auth email confirmation
+    const { error: authError } = await supabase.auth.signInWithOtp({
+      email: student.email,
+      options: {
+        emailRedirectTo: `${getBaseUrl()}/confirm-email?type=signup`
+      }
+    })
+
+    if (authError) {
+      console.error('Supabase Auth error:', authError)
       return {
         success: false,
-        error: 'Failed to generate confirmation link'
+        error: 'Failed to send confirmation email'
       }
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://your-app.vercel.app'
-    const confirmationUrl = `${baseUrl}/confirm-email?token=${confirmationToken}`
-
-    const emailData = {
-      registrationNumber: student.registration_number,
-      email: student.email,
-      confirmationUrl,
-      studentName: student.full_name || 'Student'
-    }
-
-    const emailResult = await EmailService.sendConfirmationEmail(emailData)
-
-    if (!emailResult.success) {
-      console.error('Email sending failed:', emailResult.error)
-
-    }
-
+    console.log('✅ Confirmation email sent successfully')
     return {
       success: true,
       message: `Confirmation email sent to ${student.email}`,
@@ -93,7 +105,7 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
     }
 
   } catch (error) {
-    console.error('Error in sendConfirmationEmail:', error)
+    console.error('❌ Error in sendConfirmationEmail:', error)
     return {
       success: false,
       error: 'Internal server error'
@@ -103,7 +115,8 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
 
 export async function verifyConfirmationToken(token: string): Promise<VerificationResponse> {
   try {
-  
+    console.log('🔍 verifyConfirmationToken called with token:', token)
+    
     const { data: confirmationData, error: tokenError } = await supabase
       .from('confirmation_tokens')
       .select('*')
@@ -112,6 +125,7 @@ export async function verifyConfirmationToken(token: string): Promise<Verificati
       .single()
 
     if (tokenError || !confirmationData) {
+      console.log('❌ Invalid or expired token:', tokenError)
       return {
         success: false,
         error: 'Invalid or expired confirmation token'
@@ -119,6 +133,7 @@ export async function verifyConfirmationToken(token: string): Promise<Verificati
     }
 
     if (new Date(confirmationData.expires_at) < new Date()) {
+      console.log('❌ Token expired')
       return {
         success: false,
         error: 'Confirmation token has expired'
@@ -132,16 +147,28 @@ export async function verifyConfirmationToken(token: string): Promise<Verificati
       .single()
 
     if (userError || !user) {
+      console.log('❌ User not found:', userError)
       return {
         success: false,
         error: 'User not found'
       }
     }
 
+    // Mark token as used
     await supabase
       .from('confirmation_tokens')
       .update({ used: true })
       .eq('token', token)
+
+    // Update user status to confirmed
+    await supabase
+      .from('users')
+      .update({ 
+        status: 'active',
+        email_confirmed: true,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', user.id)
 
     const sessionToken = randomUUID()
     const sessionExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
@@ -154,6 +181,7 @@ export async function verifyConfirmationToken(token: string): Promise<Verificati
         expires_at: sessionExpiresAt.toISOString()
       })
 
+    console.log('✅ Token verified successfully for user:', user.id)
     return {
       success: true,
       user: {
@@ -170,7 +198,7 @@ export async function verifyConfirmationToken(token: string): Promise<Verificati
     }
 
   } catch (error) {
-    console.error('Error in verifyConfirmationToken:', error)
+    console.error('❌ Error in verifyConfirmationToken:', error)
     return {
       success: false,
       error: 'Internal server error'

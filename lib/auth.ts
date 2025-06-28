@@ -222,8 +222,10 @@ export async function checkStudentExists(identifier: string): Promise<boolean> {
 
 export async function loginStudentDirectly(identifier: string): Promise<StudentLoginResult> {
   try {
+    console.log('🔍 loginStudentDirectly called with identifier:', identifier)
     const isEmail = identifier.includes('@')
     
+    // First, try to get the user from the database
     let query = supabase
       .from('users')
       .select('*')
@@ -235,18 +237,32 @@ export async function loginStudentDirectly(identifier: string): Promise<StudentL
       query = query.eq('registration_number', identifier)
     }
     
+    console.log('🔍 Executing database query...')
     const { data: student, error } = await query.single()
+    console.log('🔍 Database response:', { student, error })
 
-    if (error || !student) {
+    if (error) {
+      console.error('❌ Database error:', error)
+      return {
+        success: false,
+        error: `Database error: ${error.message}`
+      }
+    }
+
+    if (!student) {
+      console.log('❌ Student not found in database')
       return {
         success: false,
         error: isEmail ? 'Student not found with this email address' : 'Student not found with this registration number'
       }
     }
 
+    console.log('✅ Student found in database:', student)
+
     // Check if student has completed their profile (has full_name and other required fields)
     // This indicates they've gone through the signup process
     if (!student.full_name || !student.email) {
+      console.log('⚠️ Student exists but profile incomplete')
       // Student exists but hasn't completed signup, so they need email confirmation
       return {
         success: false,
@@ -256,22 +272,25 @@ export async function loginStudentDirectly(identifier: string): Promise<StudentL
     }
 
     // Student exists and has completed signup, allow direct login
+    const userData = {
+      id: student.id,
+      registrationNumber: student.registration_number,
+      email: student.email,
+      fullName: student.full_name,
+      role: student.role,
+      department: student.department,
+      yearOfStudy: student.year_of_study,
+      profileImageUrl: student.profile_image_url || '/placeholder.svg?height=100&width=100'
+    }
+    
+    console.log('✅ Returning user data:', userData)
     return {
       success: true,
-      user: {
-        id: student.id,
-        registrationNumber: student.registration_number,
-        email: student.email,
-        fullName: student.full_name,
-        role: student.role,
-        department: student.department,
-        yearOfStudy: student.year_of_study,
-        profileImageUrl: student.profile_image_url
-      }
+      user: userData
     }
 
   } catch (error) {
-    console.error('Error in loginStudentDirectly:', error)
+    console.error('❌ Error in loginStudentDirectly:', error)
     return {
       success: false,
       error: 'Internal server error'

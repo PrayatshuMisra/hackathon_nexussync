@@ -57,12 +57,15 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
 
     try {
       const identifier = formData.registrationNumber || formData.email!
+      console.log('🔍 Starting student login with identifier:', identifier)
       
-
       const directLoginResult = await loginStudentDirectly(identifier)
+      console.log('🔍 Direct login result:', directLoginResult)
       
       if (directLoginResult.success && directLoginResult.user) {
-        // Student exists and can login directly        localStorage.setItem("user-data", JSON.stringify(directLoginResult.user))
+        // Student exists and can login directly
+        console.log('✅ Login successful, user data:', directLoginResult.user)
+        localStorage.setItem("user-data", JSON.stringify(directLoginResult.user))
         
         onLogin(directLoginResult.user.role, {
           ...directLoginResult.user,
@@ -80,6 +83,7 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
       }
       
       if (directLoginResult.requiresConfirmation) {
+        console.log('⚠️ User requires email confirmation')
         const result = await sendConfirmationEmail(identifier)
 
         if (result.success) {
@@ -99,6 +103,7 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
         return
       }
 
+      console.log('❌ Login failed:', directLoginResult.error)
       setError(directLoginResult.error || 'Student not found')
       toast({
         title: "Login Failed",
@@ -107,6 +112,7 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
       })
       
     } catch (error) {
+      console.error('❌ Login error:', error)
       const errorMessage = "Failed to process login. Please try again."
       setError(errorMessage)
       toast({
