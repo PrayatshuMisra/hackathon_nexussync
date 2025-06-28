@@ -51,8 +51,7 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
 
     if (studentError) {
       console.error('Database query error:', studentError)
-      
-  
+ 
       if (studentError.code === 'PGRST116' || studentError.message?.includes('relation "users" does not exist')) {
         return {
           success: false,
@@ -73,7 +72,6 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
       }
     }
 
-  
     try {
       const { error: tableCheckError } = await supabase
         .from('confirmation_tokens')
@@ -142,6 +140,7 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
 
   } catch (error) {
     console.error('Error in sendConfirmationEmail:', error)
+    
 
     if (error instanceof Error) {
       if (error.message.includes('fetch')) {
