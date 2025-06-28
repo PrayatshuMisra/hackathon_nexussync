@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { randomUUID } from 'crypto'
+import { generateUUID } from './utils'
 
 export interface EmailConfirmationData {
   registrationNumber: string
@@ -24,7 +24,7 @@ export class EmailService {
         console.log('🔄 Trying to create new user for email confirmation...')
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: data.email,
-          password: randomUUID(),
+          password: generateUUID(),
           options: {
             data: {
               registration_number: data.registrationNumber,

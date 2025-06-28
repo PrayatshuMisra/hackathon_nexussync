@@ -29,6 +29,7 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [emailSent, setEmailSent] = useState(false)
+  const [systemStatus, setSystemStatus] = useState<{ status: string; message: string } | null>(null)
   const [formData, setFormData] = useState({
     registrationNumber: "",
     email: "",
@@ -36,6 +37,70 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
     adminId: "",
   })
   const { toast } = useToast()
+
+  const checkSystemStatus = async () => {
+    try {
+      setSystemStatus({ status: 'loading', message: 'Checking system status...' })
+
+      const response = await fetch('/api/health')
+      const healthData = await response.json()
+      
+      if (healthData.status === 'healthy') {
+        setSystemStatus({
+          status: 'success',
+          message: 'System is working correctly. You should be able to sign in.'
+        })
+        return
+      }
+      
+      if (healthData.status === 'unhealthy') {
+        if (!healthData.environment.hasSupabaseUrl || !healthData.environment.hasSupabaseKey) {
+          setSystemStatus({
+            status: 'error',
+            message: 'Database configuration is missing. Please contact support.'
+          })
+          return
+        }
+        
+        if (healthData.database.status === 'error') {
+          setSystemStatus({
+            status: 'error',
+            message: `Database connection failed: ${healthData.database.error}`
+          })
+          return
+        }
+      }
+      
+      if (healthData.status === 'degraded') {
+        const missingTables = []
+        if (healthData.tables.users === 'missing') missingTables.push('users')
+        if (healthData.tables.confirmation_tokens === 'missing') missingTables.push('confirmation_tokens')
+        if (healthData.tables.user_sessions === 'missing') missingTables.push('user_sessions')
+        
+        setSystemStatus({
+          status: 'error',
+          message: `Database tables missing: ${missingTables.join(', ')}. Please contact support.`
+        })
+        return
+      }
+      
+      setSystemStatus({
+        status: 'error',
+        message: 'System check failed. Please try again or contact support.'
+      })
+      
+    } catch (error) {
+      console.error('❌ System status check failed:', error)
+      setSystemStatus({
+        status: 'error',
+        message: 'Unable to check system status. Please check your internet connection.'
+      })
+    }
+  }
+
+  const handleDiagnosticClick = async () => {
+    await checkSystemStatus()
+  }
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -56,6 +121,8 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
       setError("")
 
       try {
+        console.log('🔄 Attempting to send confirmation email for registration number:', formData.registrationNumber)
+        
         const result = await sendConfirmationEmail(formData.registrationNumber)
 
         if (result.success) {
@@ -65,15 +132,20 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
             description: `Confirmation email has been sent to ${result.email}`,
           })
         } else {
-          setError(result.error || 'Failed to send confirmation email')
+          const errorMessage = result.error || 'Failed to send confirmation email'
+          console.error('❌ Email confirmation failed:', errorMessage)
+          setError(errorMessage)
           toast({
             title: "Email Failed",
-            description: result.error || 'Failed to send confirmation email',
+            description: errorMessage,
             variant: "destructive",
           })
         }
       } catch (error) {
-        const errorMessage = "Failed to send confirmation email. Please try again."
+        console.error('❌ Unexpected error in handleStudentLogin:', error)
+        const errorMessage = error instanceof Error 
+          ? error.message 
+          : "Failed to send confirmation email. Please try again."
         setError(errorMessage)
         toast({
           title: "Error",
@@ -287,7 +359,40 @@ export function EnhancedLoginForm({ onLogin, onSignupClick }: EnhancedLoginFormP
           {error && (
             <Alert variant="destructive" className="mb-6 animate-fade-in-up bg-gradient-to-r from-pink-100 via-red-100 to-pink-50 dark:from-red-900 dark:via-pink-900 dark:to-red-800 border-l-8 border-red-500 shadow-xl rounded-xl flex items-center gap-4 p-4">
               <AlertCircle className="h-7 w-7 text-red-500" />
-              <AlertDescription className="font-semibold text-red-900 dark:text-red-100 text-base">{error}</AlertDescription>
+              <div className="flex-1">
+                <AlertDescription className="font-semibold text-red-900 dark:text-red-100 text-base">{error}</AlertDescription>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleDiagnosticClick}
+                  className="mt-2 text-xs border-red-300 text-red-700 hover:bg-red-50"
+                >
+                  🔧 Run Diagnostic
+                </Button>
+              </div>
+            </Alert>
+          )}
+
+          {systemStatus && (
+            <Alert className={`mb-6 animate-fade-in-up border-l-8 shadow-xl rounded-xl flex items-center gap-4 p-4 ${
+              systemStatus.status === 'error' 
+                ? 'bg-gradient-to-r from-red-100 via-pink-100 to-red-50 dark:from-red-900 dark:via-pink-900 dark:to-red-800 border-red-500' 
+                : systemStatus.status === 'success'
+                ? 'bg-gradient-to-r from-green-100 via-emerald-100 to-green-50 dark:from-green-900 dark:via-emerald-900 dark:to-green-800 border-green-500'
+                : 'bg-gradient-to-r from-blue-100 via-indigo-100 to-blue-50 dark:from-blue-900 dark:via-indigo-900 dark:to-blue-800 border-blue-500'
+            }`}>
+              {systemStatus.status === 'loading' && <Loader2 className="h-7 w-7 text-blue-500 animate-spin" />}
+              {systemStatus.status === 'error' && <AlertCircle className="h-7 w-7 text-red-500" />}
+              {systemStatus.status === 'success' && <Mail className="h-7 w-7 text-green-500" />}
+              <AlertDescription className={`font-semibold text-base ${
+                systemStatus.status === 'error' 
+                  ? 'text-red-900 dark:text-red-100' 
+                  : systemStatus.status === 'success'
+                  ? 'text-green-900 dark:text-green-100'
+                  : 'text-blue-900 dark:text-blue-100'
+              }`}>
+                {systemStatus.message}
+              </AlertDescription>
             </Alert>
           )}
 
