@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { generateUUID, getBaseUrl } from './utils'
+import { randomUUID } from 'crypto'
 
 export interface EmailConfirmationData {
   registrationNumber: string
@@ -24,7 +24,7 @@ export class EmailService {
         console.log('🔄 Trying to create new user for email confirmation...')
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: data.email,
-          password: generateUUID(),
+          password: randomUUID(),
           options: {
             data: {
               registration_number: data.registrationNumber,
@@ -69,17 +69,8 @@ export class EmailService {
       console.log('📝 Subject:', subject)
       console.log('📄 Content length:', htmlContent.length, 'characters')
 
-      const baseUrl = getBaseUrl()
-      console.log('🔗 Using base URL for email service:', baseUrl)
-      console.log('🌐 Current window location:', typeof window !== 'undefined' ? window.location.href : 'server-side')
-      console.log('📧 Redirect URL:', `${baseUrl}/dashboard/student`)
-
-      // Hardcode the deployment URL for redirect
-      const redirectUrl = 'https://hackathon-nexussync.vercel.app/dashboard/student'
-      console.log('🎯 Final redirect URL:', redirectUrl)
-
       const { error } = await supabase.auth.resetPasswordForEmail(to, {
-        redirectTo: redirectUrl
+        redirectTo: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://hackathon-nexussync.vercel.app'}/dashboard/student`
       })
       
       if (error) {

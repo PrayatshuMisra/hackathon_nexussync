@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { EmailService } from './email-service'
-import { generateUUID, getBaseUrl } from './utils'
+import { randomUUID } from 'crypto'
 
 export interface EmailConfirmationData {
   registrationNumber: string
@@ -26,14 +26,6 @@ export interface VerificationResponse {
 export async function sendConfirmationEmail(identifier: string): Promise<ConfirmationResponse> {
   try {
 
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      console.error('Supabase environment variables not configured')
-      return {
-        success: false,
-        error: 'Authentication service not configured. Please contact support.'
-      }
-    }
-
     const isEmail = identifier.includes('@')
     
     let query = supabase
@@ -49,51 +41,14 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
     
     const { data: student, error: studentError } = await query.single()
 
-    if (studentError) {
-      console.error('Database query error:', studentError)
- 
-      if (studentError.code === 'PGRST116' || studentError.message?.includes('relation "users" does not exist')) {
-        return {
-          success: false,
-          error: 'Database not properly configured. Please contact support.'
-        }
-      }
-      
+    if (studentError || !student) {
       return {
         success: false,
         error: isEmail ? 'Student not found with this email address' : 'Student not found with this registration number'
       }
     }
 
-    if (!student) {
-      return {
-        success: false,
-        error: isEmail ? 'Student not found with this email address' : 'Student not found with this registration number'
-      }
-    }
-
-    try {
-      const { error: tableCheckError } = await supabase
-        .from('confirmation_tokens')
-        .select('id')
-        .limit(1)
-      
-      if (tableCheckError && (tableCheckError.code === 'PGRST116' || tableCheckError.message?.includes('relation "confirmation_tokens" does not exist'))) {
-        console.error('confirmation_tokens table does not exist')
-        return {
-          success: false,
-          error: 'Email confirmation system not properly configured. Please contact support.'
-        }
-      }
-    } catch (tableError) {
-      console.error('Error checking confirmation_tokens table:', tableError)
-      return {
-        success: false,
-        error: 'Email confirmation system not properly configured. Please contact support.'
-      }
-    }
-
-    const confirmationToken = generateUUID()
+    const confirmationToken = randomUUID()
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
 
     const { error: tokenError } = await supabase
@@ -110,23 +65,12 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
       console.error('Error storing confirmation token:', tokenError)
       return {
         success: false,
-        error: 'Failed to generate confirmation link. Please try again.'
+        error: 'Failed to generate confirmation link'
       }
     }
 
-    const baseUrl = getBaseUrl()
-    console.log('🔗 Using base URL for confirmation:', baseUrl)
-    console.log('🌐 Current window location:', typeof window !== 'undefined' ? window.location.href : 'server-side')
-    console.log('📧 Confirmation URL:', `${baseUrl}/confirm-email?token=${confirmationToken}`)
-    console.log('🔧 Environment check:', {
-      NODE_ENV: process.env.NODE_ENV,
-      NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
-      VERCEL_URL: process.env.VERCEL_URL
-    })
-    
-    // Hardcode the deployment URL for confirmation
-    const confirmationUrl = `https://hackathon-nexussync.vercel.app/confirm-email?token=${confirmationToken}`
-    console.log('🎯 Final confirmation URL:', confirmationUrl)
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hackathon-nexussync.vercel.app'
+    const confirmationUrl = `${baseUrl}/confirm-email?token=${confirmationToken}`
 
     const emailData = {
       registrationNumber: student.registration_number,
@@ -139,6 +83,7 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
 
     if (!emailResult.success) {
       console.error('Email sending failed:', emailResult.error)
+
     }
 
     return {
@@ -149,26 +94,9 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
 
   } catch (error) {
     console.error('Error in sendConfirmationEmail:', error)
-    
-
-    if (error instanceof Error) {
-      if (error.message.includes('fetch')) {
-        return {
-          success: false,
-          error: 'Network error. Please check your internet connection and try again.'
-        }
-      }
-      if (error.message.includes('timeout')) {
-        return {
-          success: false,
-          error: 'Request timed out. Please try again.'
-        }
-      }
-    }
-    
     return {
       success: false,
-      error: 'An unexpected error occurred. Please try again or contact support.'
+      error: 'Internal server error'
     }
   }
 }
@@ -215,7 +143,7 @@ export async function verifyConfirmationToken(token: string): Promise<Verificati
       .update({ used: true })
       .eq('token', token)
 
-    const sessionToken = generateUUID()
+    const sessionToken = randomUUID()
     const sessionExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
     await supabase
