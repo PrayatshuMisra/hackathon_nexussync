@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { EmailService } from './email-service'
-import { generateUUID } from './utils'
+import { generateUUID, getBaseUrl } from './utils'
 
 export interface EmailConfirmationData {
   registrationNumber: string
@@ -116,7 +116,8 @@ export async function sendConfirmationEmail(identifier: string): Promise<Confirm
       }
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hackathon-nexussync.vercel.app'
+    const baseUrl = getBaseUrl()
+    console.log('🔗 Using base URL for confirmation:', baseUrl)
     const confirmationUrl = `${baseUrl}/confirm-email?token=${confirmationToken}`
 
     const emailData = {

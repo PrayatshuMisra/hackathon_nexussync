@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { generateUUID } from './utils'
+import { generateUUID, getBaseUrl } from './utils'
 
 export interface EmailConfirmationData {
   registrationNumber: string
@@ -69,8 +69,10 @@ export class EmailService {
       console.log('📝 Subject:', subject)
       console.log('📄 Content length:', htmlContent.length, 'characters')
 
+      const baseUrl = getBaseUrl()
+
       const { error } = await supabase.auth.resetPasswordForEmail(to, {
-        redirectTo: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://hackathon-nexussync.vercel.app'}/dashboard/student`
+        redirectTo: `${baseUrl}/dashboard/student`
       })
       
       if (error) {
